@@ -21,7 +21,10 @@ def parse_arguments():
                         help="Columns that have equal or less unique values will be treated as a category, "
                              "and their values will be counted and output in the summary.")
     parser.add_argument("--date-format", action="store",
-                        default="\\d{2}[-/]\\d{2}[-/]\\d{4}[- ]\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?",
+                        default="\\d{1,2}[-/]\\d{1,2}[-/]\\d{2}(\\d{2})?",
+                        help="Regular expression for detecting date/time columns.")
+    parser.add_argument("--date-time-format", action="store",
+                        default="\\d{1,2}[-/]\\d{1,2}[-/]\\d{2}(\\d{2})?[- ]\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?",
                         help="Regular expression for detecting date/time columns.")
     parser.add_argument("-i", "--ignore-value", action="append", default=[],
                         help="Ignore these values from summary, use for blank equivalents such as '?' and 'N/A'")
@@ -43,12 +46,14 @@ def summarize_csv():
     headers = next(reader)
     by_column = dict((header, defaultdict(int)) for header in headers)
     all_dates = defaultdict(lambda: True)
+    all_date_times = defaultdict(lambda: True)
 
     csv_copy = wb.active
     csv_copy.title = "Data"
     csv_copy.append(headers)
 
     date_regex = re.compile(args.date_format)
+    date_time_regex = re.compile(args.date_time_format)
 
     num_rows = 0
     for line in reader:
@@ -57,6 +62,7 @@ def summarize_csv():
             if value not in args.ignore_value:
                 by_column[col][value] += 1
                 all_dates[col] &= date_regex.fullmatch(value) is not None
+                all_date_times[col] &= date_time_regex.fullmatch(value) is not None
 
         num_rows += 1
 
@@ -70,6 +76,9 @@ def summarize_csv():
         if len(values) == num_rows:
             # All values are unique
             summary.cell(row=2, column=index + 1).value = "Unique"
+        elif len(values) > 0 and all_date_times[header]:
+            # All values are date times
+            summary.cell(row=2, column=index + 1).value = "Date/Times"
         elif len(values) > 0 and all_dates[header]:
             # All values are dates
             summary.cell(row=2, column=index + 1).value = "Dates"
