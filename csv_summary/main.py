@@ -15,9 +15,9 @@ from openpyxl.utils import get_column_letter
 def parse_arguments():
     parser = ArgumentParser()
     parser.add_argument("input", type=FileType("r", encoding="utf-8", errors="replace"),
-                        help="CSV or XSL input containing data. "
-                             "If XLS/XLSX, will add two extra sheets with summary/sample data. Will update "
-                             "in place unless -o is specified. First sheet is treated as the data unless --sheet-name "
+                        help="CSV or XLSX input containing data. "
+                             "If XLSX, will add two extra sheets with summary/sample data to the input workbook "
+                             "unless -o is specified. First sheet is treated as the data unless --sheet-name "
                              "is specified.")
     parser.add_argument("-o", "--output_path",
                         help="Path to output .xlsx, default is same directory/name as CSV input",
@@ -32,10 +32,11 @@ def parse_arguments():
                         default="\\d{1,2}[-/]\\d{1,2}[-/]\\d{2}(\\d{2})?[- ]\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?",
                         help="Regular expression for detecting date/time columns.")
     parser.add_argument("-i", "--ignore-value", action="append", default=[],
-                        help="Ignore these values from summary, use for blank equivalents such as '?' and 'N/A'")
+                        help="Ignore these values from summary, use for blank equivalents such as '?' and 'N/A'."
+                        " Any number of ignored values can be specified by providing the flag more than once.")
     parser.add_argument("--sheet-name", action="store",
-                        help="Process XLS with the input in the specified sheet. "
-                             "If -o is not specified, will add new sheets to input XLS.")
+                        help="Process XLSX with the input in the specified sheet. "
+                             "If --output is not specified, will add new sheets to input XLSX.")
     parser.add_argument("-s", "--num-samples", type=int, default=3,
                         help="Number of rows to sample in transposed view")
 
