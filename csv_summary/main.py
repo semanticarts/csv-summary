@@ -5,15 +5,20 @@ import re
 from argparse import ArgumentParser, FileType
 from collections import defaultdict
 from os.path import splitext
+from operator import itemgetter
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
 
 def parse_arguments():
     parser = ArgumentParser()
-    parser.add_argument("csv_path", type=FileType("r", encoding="utf-8"))
+    parser.add_argument("input", type=FileType("r", encoding="utf-8", errors="replace"),
+                        help="CSV or XLSX input containing data. "
+                             "If XLSX, will add two extra sheets with summary/sample data to the input workbook "
+                             "unless -o is specified. First sheet is treated as the data unless --sheet-name "
+                             "is specified.")
     parser.add_argument("-o", "--output_path",
                         help="Path to output .xlsx, default is same directory/name as CSV input",
                         type=FileType("w"))
@@ -27,7 +32,11 @@ def parse_arguments():
                         default="\\d{1,2}[-/]\\d{1,2}[-/]\\d{2}(\\d{2})?[- ]\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?",
                         help="Regular expression for detecting date/time columns.")
     parser.add_argument("-i", "--ignore-value", action="append", default=[],
-                        help="Ignore these values from summary, use for blank equivalents such as '?' and 'N/A'")
+                        help="Ignore these values from summary, use for blank equivalents such as '?' and 'N/A'."
+                        " Any number of ignored values can be specified by providing the flag more than once.")
+    parser.add_argument("--sheet-name", action="store",
+                        help="Process XLSX with the input in the specified sheet. "
+                             "If --output is not specified, will add new sheets to input XLSX.")
     parser.add_argument("-s", "--num-samples", type=int, default=3,
                         help="Number of rows to sample in transposed view")
 
@@ -37,37 +46,64 @@ def parse_arguments():
 def summarize_csv():
     args = parse_arguments()
     output_path = args.output_path
-    if not output_path:
-        (base, ext) = splitext(args.csv_path.name)
-        output_path = open(base + ".xlsx", "wb")
-    wb = Workbook()
 
-    reader = csv.reader(args.csv_path)
-    headers = next(reader)
-    by_column = dict((header, defaultdict(int)) for header in headers)
-    all_dates = defaultdict(lambda: True)
-    all_date_times = defaultdict(lambda: True)
-
-    csv_copy = wb.active
-    csv_copy.title = "Data"
-    csv_copy.append(headers)
+    (base, ext) = splitext(args.input.name)
 
     date_regex = re.compile(args.date_format)
     date_time_regex = re.compile(args.date_time_format)
-
     num_rows = 0
-    for line in reader:
-        csv_copy.append(list("" if val in args.ignore_value else val for val in line))
-        for col, value in zip(headers, line):
-            if value not in args.ignore_value:
-                by_column[col][value] += 1
-                all_dates[col] &= date_regex.fullmatch(value) is not None
-                all_date_times[col] &= date_time_regex.fullmatch(value) is not None
+    headers = None
+    all_dates = defaultdict(lambda: True)
+    all_date_times = defaultdict(lambda: True)
 
-        num_rows += 1
+    if ext.startswith('.xls') or args.sheet_name:
+        wb = load_workbook(args.input.name)
+        by_column = None
+        if not output_path:
+            output_path = args.input.name
+        if args.sheet_name:
+            csv_copy = wb.get_sheet_by_name(args.sheet_name)
+        else:
+            csv_copy = wb.worksheets[0]
+        for row in csv_copy.iter_rows():
+            if not headers:
+                headers = list(str(cell.value) for cell in row)
+                by_column = dict((header, defaultdict(int)) for header in headers)
+                continue
+            for col, cell in zip(headers, row):
+                value = str(cell.value)
+                if value in args.ignore_value:
+                    cell.value = ""
+                else:
+                    by_column[col][value] += 1
+                    all_dates[col] &= date_regex.fullmatch(value) is not None
+                    all_date_times[col] &= date_time_regex.fullmatch(value) is not None
+    else:
+        if not output_path:
+            output_path = base + ".xlsx"
 
-    header_row(csv_copy)
-    auto_width(csv_copy)
+        wb = Workbook()
+
+        reader = csv.reader(args.input, )
+        headers = next(reader)
+        by_column = dict((header, defaultdict(int)) for header in headers)
+
+        csv_copy = wb.active
+        csv_copy.title = "Data"
+        csv_copy.append(headers)
+
+        for line in reader:
+            csv_copy.append(list("" if val in args.ignore_value else val for val in line))
+            for col, value in zip(headers, line):
+                if value not in args.ignore_value:
+                    by_column[col][value] += 1
+                    all_dates[col] &= date_regex.fullmatch(value) is not None
+                    all_date_times[col] &= date_time_regex.fullmatch(value) is not None
+
+            num_rows += 1
+
+        header_row(csv_copy)
+        auto_width(csv_copy)
 
     summary = wb.create_sheet("Summary")
     summary.append(headers)
@@ -84,14 +120,14 @@ def summarize_csv():
             summary.cell(row=2, column=index + 1).value = "Dates"
         elif len(values) <= args.category_threshold:
             for row, usage in enumerate(
-                    f"{k} [{v}]" for k, v in sorted(values.items(), reverse=True, key=lambda item: item[1])):
+                    f"{k} [{v}]" for k, v in sorted(values.items(), reverse=True, key=itemgetter(1, 0))):
                 summary.cell(row=row + 2, column=index + 1).value = usage
     header_row(summary)
     auto_width(summary)
 
     samples = wb.create_sheet("Samples")
     for row, hdr in enumerate(headers):
-        samples.cell(row=row+1, column=1).value = hdr
+        samples.cell(row=row + 1, column=1).value = hdr
     for sample in range(args.num_samples):
         for index in range(len(headers)):
             samples.cell(row=index + 1, column=sample + 2).value = csv_copy.cell(row=sample + 2, column=index + 1).value
