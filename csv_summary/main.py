@@ -74,7 +74,7 @@ def summarize_csv():
                 value = str(cell.value)
                 if value in args.ignore_value:
                     cell.value = ""
-                else:
+                elif value:
                     by_column[col][value] += 1
                     all_dates[col] &= date_regex.fullmatch(value) is not None
                     all_date_times[col] &= date_time_regex.fullmatch(value) is not None
@@ -95,7 +95,7 @@ def summarize_csv():
         for line in reader:
             csv_copy.append(list("" if val in args.ignore_value else val for val in line))
             for col, value in zip(headers, line):
-                if value not in args.ignore_value:
+                if value and value not in args.ignore_value:
                     by_column[col][value] += 1
                     all_dates[col] &= date_regex.fullmatch(value) is not None
                     all_date_times[col] &= date_time_regex.fullmatch(value) is not None
@@ -122,6 +122,8 @@ def summarize_csv():
             for row, usage in enumerate(
                     f"{k} [{v}]" for k, v in sorted(values.items(), reverse=True, key=itemgetter(1, 0))):
                 summary.cell(row=row + 2, column=index + 1).value = usage
+        else:
+            summary.cell(row=2, column=index + 1).value = f"{len(values)} Values"
     header_row(summary)
     auto_width(summary)
 
