@@ -21,7 +21,7 @@ def parse_arguments():
                              "is specified.")
     parser.add_argument("-o", "--output_path",
                         help="Path to output .xlsx, default is same directory/name as CSV input",
-                        type=FileType("w"))
+                        type=FileType("wb"))
     parser.add_argument("--category-threshold", type=int, default=100,
                         help="Columns that have equal or less unique values will be treated as a category, "
                              "and their values will be counted and output in the summary.")
